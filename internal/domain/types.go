@@ -8,8 +8,10 @@ type Event struct {
 }
 
 type Endpoint struct {
-	ID     string
-	URL    string
+	ID  string
+	URL string
+	// Secret is the shared secret for HMAC signature verification.
+	// IMPORTANT: Never log this value. Consider using struct tags to prevent serialization.
 	Secret string
 	Active bool
 	Events []string
