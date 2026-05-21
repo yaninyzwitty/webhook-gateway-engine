@@ -13,6 +13,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("gateway service failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// Load configuration
 	configPath := flag.String("config", "config.yaml", "the path to your config file")
 	flag.Parse()
@@ -26,7 +33,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	pool, err := postgres.New(ctx, &cfg.Postgres, postgres.WithMaxConns(100), postgres.WithMinConns(5))
+	pool, err := postgres.New(ctx, &cfg.Postgres)
 	if err != nil {
 		slog.Error("failed to connect to postgres: ", "error", err)
 		os.Exit(1)
@@ -35,4 +42,5 @@ func main() {
 	defer pool.Close()
 
 	slog.Info("Port", "value", cfg.Server.Port)
+	return nil
 }

@@ -118,6 +118,14 @@ func (c *Config) validate() error {
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("config: invalid server port: %d", c.Server.Port)
 	}
+
+	if c.Postgres.MaxConns <= 0 {
+		return fmt.Errorf("config: postgres max_conns must be > 0: %d", c.Postgres.MaxConns)
+	}
+
+	if c.Postgres.MinConns < 0 {
+		return fmt.Errorf("config: postgres min_conns cannot be negative: %d", c.Postgres.MinConns)
+	}
 	if c.Postgres.MaxConns < c.Postgres.MinConns {
 		return fmt.Errorf("config: postgres max_conns (%d) < min_conns (%d)",
 			c.Postgres.MaxConns, c.Postgres.MinConns)

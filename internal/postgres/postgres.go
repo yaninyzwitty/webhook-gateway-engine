@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yaninyzwitty/webhook-gateway-service/internal/config"
 )
@@ -22,10 +23,20 @@ func WithMinConns(n int32) Option {
 	}
 }
 
-func WithConnectFunc(fn func(ctx context.Context, cfg *pgxpool.Config) (*pgxpool.Pool, error)) Option {
-	// example: inject a custom dial for mTLS, IAM auth, etc.
-	_ = fn
-	return func(c *pgxpool.Config) {}
+func WithConnectFunc(fn func(context.Context, *pgx.ConnConfig) error) Option {
+	return func(c *pgxpool.Config) {
+		if c.BeforeConnect == nil {
+			c.BeforeConnect = fn
+		} else {
+			originalBeforeConnect := c.BeforeConnect
+			c.BeforeConnect = func(ctx context.Context, cc *pgx.ConnConfig) error {
+				if err := originalBeforeConnect(ctx, cc); err != nil {
+					return err
+				}
+				return fn(ctx, cc)
+			}
+		}
+	}
 }
 
 func New(ctx context.Context, cfg *config.PostgresConfig, options ...Option) (*pgxpool.Pool, error) {
@@ -47,6 +58,7 @@ func New(ctx context.Context, cfg *config.PostgresConfig, options ...Option) (*p
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("postgres: create pool: %w", err)
 	}
 
