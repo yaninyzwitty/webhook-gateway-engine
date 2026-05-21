@@ -1,0 +1,16 @@
+server:
+  port: 8081
+  read_timeout_seconds: 10
+  write_timeout_seconds: 10
+  graceful_shutdown_seconds: 30
+
+postgres:
+  max_conn: 20
+  min_conn: 2
+  max_conn_idle_mins: 10
+  health_check_period_seconds: 30
+
+webhook:
+  max_payload_bytes: 1048576
+  delivery_timeout_seconds: 30
+  max_retry_attempts: 5  
