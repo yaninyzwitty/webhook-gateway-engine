@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package event.v1;
+
+option go_package = "github.com/yaninyzwitty/webhook-gateway-service/gen/event/v1;eventv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+message Event {
+  string                    id              = 1;
+  string                    idempotency_key = 2;
+  string                    topic           = 3;
+  string                    payload         = 4;
+  google.protobuf.Timestamp received_at     = 5;
+}
+
+message CreateEventRequest {
+  string idempotency_key = 1 ;
+  string topic           = 2 ;
+  string payload         = 3 ;
+}
+
+message CreateEventResponse {
+  Event event = 1;
+}
+
+message GetEventRequest {
+  oneof identifier {
+    string id              = 1;
+    string idempotency_key = 2;
+  }
+}
+
+message GetEventResponse {
+  Event event = 1;
+}
+
+message ListEventsRequest {
+  google.protobuf.Timestamp   cursor_received_at = 1;
+  string                      cursor_id          = 2;
+  int32                       limit              = 3 ;
+  google.protobuf.StringValue topic              = 4;
+}
+
+message ListEventsResponse {
+  repeated Event            events                  = 1;
+  google.protobuf.Timestamp next_cursor_received_at = 2;
+  string                    next_cursor_id          = 3;
+  bool                      has_more                = 4;
+}
+
+service EventService {
+  rpc CreateEvent(CreateEventRequest) returns (CreateEventResponse);
+  rpc GetEvent(GetEventRequest) returns (GetEventResponse);
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}
