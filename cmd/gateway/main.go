@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/yaninyzwitty/webhook-gateway-service/internal/config"
+	"github.com/yaninyzwitty/webhook-gateway-service/config"
 	"github.com/yaninyzwitty/webhook-gateway-service/internal/postgres"
 )
 

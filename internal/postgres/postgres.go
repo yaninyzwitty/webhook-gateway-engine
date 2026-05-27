@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/yaninyzwitty/webhook-gateway-service/internal/config"
+	"github.com/yaninyzwitty/webhook-gateway-service/config"
 )
 
 type Option func(*pgxpool.Config)
