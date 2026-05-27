@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package delivery.v1;
+
+option go_package = "github.com/yaninyzwitty/webhook-gateway-service/gen/delivery/v1;deliveryv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED   = 0;
+  DELIVERY_STATUS_PENDING       = 1;
+  DELIVERY_STATUS_DELIVERING    = 2;
+  DELIVERY_STATUS_DELIVERED     = 3;
+  DELIVERY_STATUS_DEAD_LETTERED = 4;
+}
+
+message Delivery {
+  string                      id                = 1;
+  string                      event_id          = 2;
+  string                      endpoint_id       = 3;
+  DeliveryStatus              status            = 4;
+  int32                       attempt_count     = 5;
+  google.protobuf.Timestamp   next_retry_at     = 6;
+  google.protobuf.Int32Value  last_http_status  = 7;
+  google.protobuf.StringValue last_error        = 8;
+  google.protobuf.Timestamp   last_attempted_at = 9;
+  google.protobuf.Timestamp   delivered_at      = 10;
+  google.protobuf.Timestamp   dead_lettered_at  = 11;
+  google.protobuf.Timestamp   created_at        = 12;
+}
+
+message CreateDeliveryRequest {
+  string event_id    = 1;
+  string endpoint_id = 2;
+}
+
+message CreateDeliveryResponse {
+  Delivery delivery = 1;
+}
+
+message CreateDeliveriesForEventRequest {
+  string          event_id = 1;
+  repeated string topics   = 2;
+}
+
+message CreateDeliveriesForEventResponse {
+  repeated Delivery deliveries = 1;
+}
+
+message GetDeliveryRequest {
+  string id = 1;
+}
+
+message GetDeliveryResponse {
+  Delivery delivery = 1;
+}
+
+message GetDeliveryByEventAndEndpointRequest {
+  string event_id    = 1;
+  string endpoint_id = 2;
+}
+
+message GetDeliveryByEventAndEndpointResponse {
+  Delivery delivery = 1;
+}
+
+message ListPendingDeliveriesRequest {
+  int32                     limit      = 1 ;
+  google.protobuf.Timestamp until_time = 2;
+}
+
+message ListPendingDeliveriesResponse {
+  repeated Delivery deliveries = 1;
+}
+
+message UpdateDeliveryAttemptRequest {
+  string                      id               = 1;
+  DeliveryStatus              status           = 2;
+  google.protobuf.Timestamp   next_retry_at    = 3;
+  google.protobuf.Int32Value  last_http_status = 4;
+  google.protobuf.StringValue last_error       = 5;
+  google.protobuf.Timestamp   delivered_at     = 6;
+  google.protobuf.Timestamp   dead_lettered_at = 7;
+}
+
+message UpdateDeliveryAttemptResponse {
+  Delivery delivery = 1;
+}
+
+message CountPendingDeliveriesRequest {}
+
+message CountPendingDeliveriesResponse {
+  int64 count = 1;
+}
+
+message ListDeliveriesByEndpointRequest {
+  string                      endpoint_id = 1;
+  google.protobuf.StringValue cursor      = 2;
+  int32                       limit       = 3 ;
+  repeated DeliveryStatus     statuses    = 4;
+}
+
+message ListDeliveriesByEndpointResponse {
+  repeated Delivery deliveries  = 1;
+  string            next_cursor = 2;
+  bool              has_more    = 3;
+}
+
+message ListDeadLetteredDeliveriesRequest {
+  google.protobuf.Timestamp cursor_dead_lettered_at = 1;
+  string                    cursor_id               = 2;
+  int32                     limit                   = 3 ;
+}
+
+message ListDeadLetteredDeliveriesResponse {
+  repeated Delivery         deliveries                   = 1;
+  google.protobuf.Timestamp next_cursor_dead_lettered_at = 2;
+  string                    next_cursor_id               = 3;
+  bool                      has_more                     = 4;
+}
+
+service DeliveryService {
+  rpc CreateDelivery(CreateDeliveryRequest) returns (CreateDeliveryResponse);
+  rpc CreateDeliveriesForEvent(CreateDeliveriesForEventRequest) returns (CreateDeliveriesForEventResponse);
+  rpc GetDelivery(GetDeliveryRequest) returns (GetDeliveryResponse);
+  rpc GetDeliveryByEventAndEndpoint(GetDeliveryByEventAndEndpointRequest) returns (GetDeliveryByEventAndEndpointResponse);
+  rpc ListPendingDeliveries(ListPendingDeliveriesRequest) returns (ListPendingDeliveriesResponse);
+  rpc UpdateDeliveryAttempt(UpdateDeliveryAttemptRequest) returns (UpdateDeliveryAttemptResponse);
+  rpc CountPendingDeliveries(CountPendingDeliveriesRequest) returns (CountPendingDeliveriesResponse);
+  rpc ListDeliveriesByEndpoint(ListDeliveriesByEndpointRequest) returns (ListDeliveriesByEndpointResponse);
+  rpc ListDeadLetteredDeliveries(ListDeadLetteredDeliveriesRequest) returns (ListDeadLetteredDeliveriesResponse);
+}

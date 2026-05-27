@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package endpoint.v1;
+
+option go_package = "github.com/yaninyzwitty/webhook-gateway-service/gen/endpoint/v1;endpointv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+message Endpoint {
+  string                      id           = 1;
+  string                      name         = 2;
+  string                      url          = 3 ;
+  repeated string             topics       = 4;
+  google.protobuf.StringValue secret       = 5;
+  bool                        active       = 6;
+  int32                       max_attempts = 7;
+  int32                       timeout_ms   = 8;
+  google.protobuf.Timestamp   created_at   = 9;
+  google.protobuf.Timestamp   updated_at   = 10;
+}
+
+message CreateEndpointRequest {
+  string                      name         = 1 ;
+  string                      url          = 2 ;
+  repeated string             topics       = 3;
+  google.protobuf.StringValue secret       = 4;
+  bool                        active       = 5;
+  int32                       max_attempts = 6;
+  int32                       timeout_ms   = 7 ;
+}
+
+message CreateEndpointResponse {
+  Endpoint endpoint = 1;
+}
+
+message GetEndpointRequest {
+  oneof identifier {
+    string id   = 1;
+    string name = 2;
+  }
+}
+
+message GetEndpointResponse {
+  Endpoint endpoint = 1;
+}
+
+message ListEndpointsRequest {
+  repeated string             topics      = 1;
+  bool                        active_only = 2;
+  google.protobuf.StringValue cursor      = 3;
+  int32                       limit       = 4 ;
+}
+
+message ListEndpointsResponse {
+  repeated Endpoint endpoints   = 1;
+  string            next_cursor = 2;
+  bool              has_more    = 3;
+}
+
+message UpdateEndpointRequest {
+  string                      id           = 1 ;
+  google.protobuf.StringValue name         = 2 ;
+  google.protobuf.StringValue url          = 3 ;
+  repeated string             topics       = 4;
+  google.protobuf.StringValue secret       = 5;
+  google.protobuf.BoolValue   active       = 6;
+  google.protobuf.Int32Value  max_attempts = 7 ;
+  google.protobuf.Int32Value  timeout_ms   = 8 ;
+  ;
+}
+
+message UpdateEndpointResponse {
+  Endpoint endpoint = 1;
+}
+
+message DeleteEndpointRequest {
+  string id = 1 ;
+}
+
+message DeleteEndpointResponse {}
+
+service EndpointService {
+  rpc CreateEndpoint(CreateEndpointRequest) returns (CreateEndpointResponse);
+  rpc GetEndpoint(GetEndpointRequest) returns (GetEndpointResponse);
+  rpc ListEndpoints(ListEndpointsRequest) returns (ListEndpointsResponse);
+  rpc UpdateEndpoint(UpdateEndpointRequest) returns (UpdateEndpointResponse);
+  rpc DeleteEndpoint(DeleteEndpointRequest) returns (DeleteEndpointResponse);
+}

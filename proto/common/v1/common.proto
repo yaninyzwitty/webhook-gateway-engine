@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/yaninyzwitty/webhook-gateway-service/gen/common/v1;commonv1";
+
+import "google/protobuf/timestamp.proto";
+
+message PaginationResponse {
+  string next_cursor = 1;
+  bool has_more = 2;
+  int32 total_count = 3;
+}
+
+message CursorPaginationRequest {
+  string cursor = 1;
+  int32 limit = 2;
+  bool backward = 3;
+}
+
+message TimestampCursorPaginationRequest {
+  google.protobuf.Timestamp cursor_timestamp = 1;
+  string cursor_id = 2;
+  int32 limit = 3;
+  bool backward = 4;
+}
+
+message Empty {}
