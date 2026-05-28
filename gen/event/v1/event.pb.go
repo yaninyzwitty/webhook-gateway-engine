@@ -160,10 +160,12 @@ func (x *CreateEventRequest) GetPayload() string {
 }
 
 type CreateEventResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Event         *Event                 `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Event             *Event                 `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	AlreadyExists     bool                   `protobuf:"varint,2,opt,name=already_exists,json=alreadyExists,proto3" json:"already_exists,omitempty"`
+	DeliveriesCreated int32                  `protobuf:"varint,3,opt,name=deliveries_created,json=deliveriesCreated,proto3" json:"deliveries_created,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CreateEventResponse) Reset() {
@@ -201,6 +203,20 @@ func (x *CreateEventResponse) GetEvent() *Event {
 		return x.Event
 	}
 	return nil
+}
+
+func (x *CreateEventResponse) GetAlreadyExists() bool {
+	if x != nil {
+		return x.AlreadyExists
+	}
+	return false
+}
+
+func (x *CreateEventResponse) GetDeliveriesCreated() int32 {
+	if x != nil {
+		return x.DeliveriesCreated
+	}
+	return 0
 }
 
 type GetEventRequest struct {
@@ -480,9 +496,11 @@ const file_event_v1_event_proto_rawDesc = "" +
 	"\x12CreateEventRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x14\n" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x18\n" +
-	"\apayload\x18\x03 \x01(\tR\apayload\"<\n" +
+	"\apayload\x18\x03 \x01(\tR\apayload\"\x92\x01\n" +
 	"\x13CreateEventResponse\x12%\n" +
-	"\x05event\x18\x01 \x01(\v2\x0f.event.v1.EventR\x05event\"\\\n" +
+	"\x05event\x18\x01 \x01(\v2\x0f.event.v1.EventR\x05event\x12%\n" +
+	"\x0ealready_exists\x18\x02 \x01(\bR\ralreadyExists\x12-\n" +
+	"\x12deliveries_created\x18\x03 \x01(\x05R\x11deliveriesCreated\"\\\n" +
 	"\x0fGetEventRequest\x12\x10\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x12)\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tH\x00R\x0eidempotencyKeyB\f\n" +

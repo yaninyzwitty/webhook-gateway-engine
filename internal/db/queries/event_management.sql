@@ -20,5 +20,9 @@ WHERE (
     (sqlc.narg('cursor_received_at')::timestamptz IS NULL AND sqlc.narg('cursor_id')::uuid IS NULL)
     OR (received_at, id) < (sqlc.narg('cursor_received_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
 )
+AND (
+    sqlc.narg('topic')::text IS NULL
+    OR topic = sqlc.narg('topic')::text
+)
 ORDER BY received_at DESC, id DESC
 LIMIT sqlc.arg('limit');
