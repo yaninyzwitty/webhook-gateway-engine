@@ -23,6 +23,9 @@ message CreateEventRequest {
 
 message CreateEventResponse {
   Event event = 1;
+  bool already_exists = 2;
+  int32 deliveries_created = 3;
+
 }
 
 message GetEventRequest {

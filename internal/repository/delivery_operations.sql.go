@@ -13,6 +13,59 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimPendingDeliveriesForWorker = `-- name: ClaimPendingDeliveriesForWorker :many
+WITH ready AS (
+    SELECT id
+    FROM deliveries
+    WHERE status = 'pending' AND next_retry_at <= NOW()
+    ORDER BY next_retry_at ASC, id ASC
+    FOR UPDATE SKIP LOCKED
+    LIMIT $1
+)
+UPDATE deliveries
+SET status = 'delivering',
+    last_attempted_at = NOW()
+FROM ready
+WHERE deliveries.id = ready.id
+RETURNING deliveries.id, deliveries.event_id, deliveries.endpoint_id, deliveries.status,
+          deliveries.attempt_count, deliveries.next_retry_at, deliveries.last_http_status,
+          deliveries.last_error, deliveries.last_attempted_at, deliveries.delivered_at,
+          deliveries.dead_lettered_at, deliveries.created_at
+`
+
+func (q *Queries) ClaimPendingDeliveriesForWorker(ctx context.Context, limit int32) ([]Delivery, error) {
+	rows, err := q.db.Query(ctx, claimPendingDeliveriesForWorker, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Delivery
+	for rows.Next() {
+		var i Delivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.EndpointID,
+			&i.Status,
+			&i.AttemptCount,
+			&i.NextRetryAt,
+			&i.LastHttpStatus,
+			&i.LastError,
+			&i.LastAttemptedAt,
+			&i.DeliveredAt,
+			&i.DeadLetteredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countPendingDeliveries = `-- name: CountPendingDeliveries :one
 SELECT COUNT(*) FROM deliveries WHERE status = 'pending'
 `
@@ -205,6 +258,171 @@ func (q *Queries) GetPendingDeliveriesForWorker(ctx context.Context, limit int32
 		return nil, err
 	}
 	return items, nil
+}
+
+const listDeadLetteredDeliveries = `-- name: ListDeadLetteredDeliveries :many
+SELECT id, event_id, endpoint_id, status, attempt_count, next_retry_at,
+       last_http_status, last_error, last_attempted_at, delivered_at, dead_lettered_at, created_at
+FROM deliveries
+WHERE status = 'dead_lettered'
+  AND (
+      $1::timestamptz IS NULL
+      OR $2::uuid IS NULL
+      OR (dead_lettered_at, id) < ($1::timestamptz, $2::uuid)
+  )
+ORDER BY dead_lettered_at DESC, id DESC
+LIMIT $3
+`
+
+type ListDeadLetteredDeliveriesParams struct {
+	CursorDeadLetteredAt pgtype.Timestamptz `json:"cursor_dead_lettered_at"`
+	CursorID             pgtype.UUID        `json:"cursor_id"`
+	Limit                int32              `json:"limit"`
+}
+
+func (q *Queries) ListDeadLetteredDeliveries(ctx context.Context, arg ListDeadLetteredDeliveriesParams) ([]Delivery, error) {
+	rows, err := q.db.Query(ctx, listDeadLetteredDeliveries, arg.CursorDeadLetteredAt, arg.CursorID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Delivery
+	for rows.Next() {
+		var i Delivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.EndpointID,
+			&i.Status,
+			&i.AttemptCount,
+			&i.NextRetryAt,
+			&i.LastHttpStatus,
+			&i.LastError,
+			&i.LastAttemptedAt,
+			&i.DeliveredAt,
+			&i.DeadLetteredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeliveriesByEndpoint = `-- name: ListDeliveriesByEndpoint :many
+SELECT id, event_id, endpoint_id, status, attempt_count, next_retry_at,
+       last_http_status, last_error, last_attempted_at, delivered_at, dead_lettered_at, created_at
+FROM deliveries
+WHERE endpoint_id = $1
+  AND (
+      cardinality($2::text[]) IS NULL
+      OR cardinality($2::text[]) = 0
+      OR status = ANY($2::text[])
+  )
+  AND (
+      $3::uuid IS NULL
+      OR id > $3::uuid
+  )
+ORDER BY id
+LIMIT $4
+`
+
+type ListDeliveriesByEndpointParams struct {
+	EndpointID uuid.UUID   `json:"endpoint_id"`
+	Statuses   []string    `json:"statuses"`
+	CursorID   pgtype.UUID `json:"cursor_id"`
+	Limit      int32       `json:"limit"`
+}
+
+func (q *Queries) ListDeliveriesByEndpoint(ctx context.Context, arg ListDeliveriesByEndpointParams) ([]Delivery, error) {
+	rows, err := q.db.Query(ctx, listDeliveriesByEndpoint,
+		arg.EndpointID,
+		arg.Statuses,
+		arg.CursorID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Delivery
+	for rows.Next() {
+		var i Delivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.EndpointID,
+			&i.Status,
+			&i.AttemptCount,
+			&i.NextRetryAt,
+			&i.LastHttpStatus,
+			&i.LastError,
+			&i.LastAttemptedAt,
+			&i.DeliveredAt,
+			&i.DeadLetteredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rescheduleDelivery = `-- name: RescheduleDelivery :one
+UPDATE deliveries
+SET status = 'pending',
+    next_retry_at = $1,
+    last_error = $2
+WHERE id = $3
+RETURNING id, event_id, endpoint_id, status, attempt_count, next_retry_at,
+          last_http_status, last_error, last_attempted_at, delivered_at, dead_lettered_at, created_at
+`
+
+type RescheduleDeliveryParams struct {
+	NextRetryAt time.Time   `json:"next_retry_at"`
+	LastError   pgtype.Text `json:"last_error"`
+	ID          uuid.UUID   `json:"id"`
+}
+
+func (q *Queries) RescheduleDelivery(ctx context.Context, arg RescheduleDeliveryParams) (Delivery, error) {
+	row := q.db.QueryRow(ctx, rescheduleDelivery, arg.NextRetryAt, arg.LastError, arg.ID)
+	var i Delivery
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.EndpointID,
+		&i.Status,
+		&i.AttemptCount,
+		&i.NextRetryAt,
+		&i.LastHttpStatus,
+		&i.LastError,
+		&i.LastAttemptedAt,
+		&i.DeliveredAt,
+		&i.DeadLetteredAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const resetStaleDelivering = `-- name: ResetStaleDelivering :exec
+UPDATE deliveries
+SET status = 'pending',
+    next_retry_at = NOW()
+WHERE status = 'delivering'
+  AND last_attempted_at <= NOW() - ($1::bigint * INTERVAL '1 millisecond')
+`
+
+func (q *Queries) ResetStaleDelivering(ctx context.Context, staleAfterMilliseconds int64) error {
+	_, err := q.db.Exec(ctx, resetStaleDelivering, staleAfterMilliseconds)
+	return err
 }
 
 const updateDeliveryAttempt = `-- name: UpdateDeliveryAttempt :one

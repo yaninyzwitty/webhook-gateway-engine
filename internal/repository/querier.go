@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	ClaimPendingDeliveriesForWorker(ctx context.Context, limit int32) ([]Delivery, error)
 	CountPendingDeliveries(ctx context.Context) (int64, error)
 	CreateDeliveriesForEvent(ctx context.Context, arg CreateDeliveriesForEventParams) ([]Delivery, error)
 	CreateDelivery(ctx context.Context, arg CreateDeliveryParams) (Delivery, error)
@@ -26,7 +27,15 @@ type Querier interface {
 	// Ready pending deliveries for worker queue processing.
 	GetPendingDeliveriesForWorker(ctx context.Context, limit int32) ([]Delivery, error)
 	ListActiveEndpointsByTopics(ctx context.Context, topics []string) ([]Endpoint, error)
+	ListDeadLetteredDeliveries(ctx context.Context, arg ListDeadLetteredDeliveriesParams) ([]Delivery, error)
+	ListDeliveriesByEndpoint(ctx context.Context, arg ListDeliveriesByEndpointParams) ([]Delivery, error)
+	ListEndpoints(ctx context.Context, arg ListEndpointsParams) ([]Endpoint, error)
 	ListEvents(ctx context.Context, arg ListEventsParams) ([]Event, error)
+	MarkEndpointDeliveryFailure(ctx context.Context, arg MarkEndpointDeliveryFailureParams) (Endpoint, error)
+	MarkEndpointDeliverySuccess(ctx context.Context, id uuid.UUID) (Endpoint, error)
+	MoveEndpointCircuitToHalfOpen(ctx context.Context, id uuid.UUID) (Endpoint, error)
+	RescheduleDelivery(ctx context.Context, arg RescheduleDeliveryParams) (Delivery, error)
+	ResetStaleDelivering(ctx context.Context, staleAfterMilliseconds int64) error
 	UpdateDeliveryAttempt(ctx context.Context, arg UpdateDeliveryAttemptParams) (Delivery, error)
 	UpdateEndpoint(ctx context.Context, arg UpdateEndpointParams) (Endpoint, error)
 }

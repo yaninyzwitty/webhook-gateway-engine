@@ -82,18 +82,28 @@ WHERE (
     ($1::timestamptz IS NULL AND $2::uuid IS NULL)
     OR (received_at, id) < ($1::timestamptz, $2::uuid)
 )
+AND (
+    $3::text IS NULL
+    OR topic = $3::text
+)
 ORDER BY received_at DESC, id DESC
-LIMIT $3
+LIMIT $4
 `
 
 type ListEventsParams struct {
 	CursorReceivedAt pgtype.Timestamptz `json:"cursor_received_at"`
 	CursorID         pgtype.UUID        `json:"cursor_id"`
+	Topic            pgtype.Text        `json:"topic"`
 	Limit            int32              `json:"limit"`
 }
 
 func (q *Queries) ListEvents(ctx context.Context, arg ListEventsParams) ([]Event, error) {
-	rows, err := q.db.Query(ctx, listEvents, arg.CursorReceivedAt, arg.CursorID, arg.Limit)
+	rows, err := q.db.Query(ctx, listEvents,
+		arg.CursorReceivedAt,
+		arg.CursorID,
+		arg.Topic,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

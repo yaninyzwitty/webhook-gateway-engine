@@ -27,16 +27,20 @@ type Delivery struct {
 }
 
 type Endpoint struct {
-	ID          uuid.UUID   `json:"id"`
-	Name        string      `json:"name"`
-	Url         string      `json:"url"`
-	Topics      []string    `json:"topics"`
-	Secret      pgtype.Text `json:"secret"`
-	Active      bool        `json:"active"`
-	MaxAttempts int32       `json:"max_attempts"`
-	TimeoutMs   int32       `json:"timeout_ms"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID            uuid.UUID          `json:"id"`
+	Name          string             `json:"name"`
+	Url           string             `json:"url"`
+	Topics        []string           `json:"topics"`
+	Secret        pgtype.Text        `json:"secret"`
+	Active        bool               `json:"active"`
+	MaxAttempts   int32              `json:"max_attempts"`
+	TimeoutMs     int32              `json:"timeout_ms"`
+	CircuitState  string             `json:"circuit_state"`
+	FailureCount  int32              `json:"failure_count"`
+	LastFailureAt pgtype.Timestamptz `json:"last_failure_at"`
+	CooldownUntil pgtype.Timestamptz `json:"cooldown_until"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
 }
 
 type Event struct {

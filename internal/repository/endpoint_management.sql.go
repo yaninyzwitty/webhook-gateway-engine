@@ -23,7 +23,9 @@ VALUES (
     $6,
     $7
 )
-RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms, created_at, updated_at
+RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms,
+          circuit_state, failure_count, last_failure_at, cooldown_until,
+          created_at, updated_at
 `
 
 type CreateEndpointParams struct {
@@ -56,6 +58,10 @@ func (q *Queries) CreateEndpoint(ctx context.Context, arg CreateEndpointParams) 
 		&i.Active,
 		&i.MaxAttempts,
 		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -72,7 +78,9 @@ func (q *Queries) DeleteEndpoint(ctx context.Context, id uuid.UUID) error {
 }
 
 const getEndpointByID = `-- name: GetEndpointByID :one
-SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms, created_at, updated_at
+SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms,
+       circuit_state, failure_count, last_failure_at, cooldown_until,
+       created_at, updated_at
 FROM endpoints
 WHERE id = $1
 `
@@ -89,6 +97,10 @@ func (q *Queries) GetEndpointByID(ctx context.Context, id uuid.UUID) (Endpoint, 
 		&i.Active,
 		&i.MaxAttempts,
 		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -96,7 +108,9 @@ func (q *Queries) GetEndpointByID(ctx context.Context, id uuid.UUID) (Endpoint, 
 }
 
 const getEndpointByName = `-- name: GetEndpointByName :one
-SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms, created_at, updated_at
+SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms,
+       circuit_state, failure_count, last_failure_at, cooldown_until,
+       created_at, updated_at
 FROM endpoints
 WHERE name = $1
 `
@@ -113,6 +127,10 @@ func (q *Queries) GetEndpointByName(ctx context.Context, name string) (Endpoint,
 		&i.Active,
 		&i.MaxAttempts,
 		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -120,7 +138,9 @@ func (q *Queries) GetEndpointByName(ctx context.Context, name string) (Endpoint,
 }
 
 const listActiveEndpointsByTopics = `-- name: ListActiveEndpointsByTopics :many
-SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms, created_at, updated_at
+SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms,
+       circuit_state, failure_count, last_failure_at, cooldown_until,
+       created_at, updated_at
 FROM endpoints
 WHERE active = TRUE AND topics && $1
 ORDER BY id
@@ -144,6 +164,10 @@ func (q *Queries) ListActiveEndpointsByTopics(ctx context.Context, topics []stri
 			&i.Active,
 			&i.MaxAttempts,
 			&i.TimeoutMs,
+			&i.CircuitState,
+			&i.FailureCount,
+			&i.LastFailureAt,
+			&i.CooldownUntil,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -157,6 +181,190 @@ func (q *Queries) ListActiveEndpointsByTopics(ctx context.Context, topics []stri
 	return items, nil
 }
 
+const listEndpoints = `-- name: ListEndpoints :many
+SELECT id, name, url, topics, secret, active, max_attempts, timeout_ms,
+       circuit_state, failure_count, last_failure_at, cooldown_until,
+       created_at, updated_at
+FROM endpoints
+WHERE (
+    NOT $1::bool OR active = TRUE
+)
+AND (
+    cardinality($2::text[]) IS NULL
+    OR cardinality($2::text[]) = 0
+    OR topics && $2::text[]
+)
+AND (
+    $3::uuid IS NULL
+    OR id > $3::uuid
+)
+ORDER BY id
+LIMIT $4
+`
+
+type ListEndpointsParams struct {
+	ActiveOnly bool        `json:"active_only"`
+	Topics     []string    `json:"topics"`
+	CursorID   pgtype.UUID `json:"cursor_id"`
+	Limit      int32       `json:"limit"`
+}
+
+func (q *Queries) ListEndpoints(ctx context.Context, arg ListEndpointsParams) ([]Endpoint, error) {
+	rows, err := q.db.Query(ctx, listEndpoints,
+		arg.ActiveOnly,
+		arg.Topics,
+		arg.CursorID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Endpoint
+	for rows.Next() {
+		var i Endpoint
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Url,
+			&i.Topics,
+			&i.Secret,
+			&i.Active,
+			&i.MaxAttempts,
+			&i.TimeoutMs,
+			&i.CircuitState,
+			&i.FailureCount,
+			&i.LastFailureAt,
+			&i.CooldownUntil,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markEndpointDeliveryFailure = `-- name: MarkEndpointDeliveryFailure :one
+UPDATE endpoints
+SET failure_count = failure_count + 1,
+    last_failure_at = NOW(),
+    circuit_state = CASE
+        WHEN failure_count + 1 >= $1 THEN 'open'
+        ELSE circuit_state
+    END,
+    cooldown_until = CASE
+        WHEN failure_count + 1 >= $1 THEN $2
+        ELSE cooldown_until
+    END,
+    updated_at = NOW()
+WHERE id = $3
+RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms,
+          circuit_state, failure_count, last_failure_at, cooldown_until,
+          created_at, updated_at
+`
+
+type MarkEndpointDeliveryFailureParams struct {
+	FailureThreshold int32              `json:"failure_threshold"`
+	CooldownUntil    pgtype.Timestamptz `json:"cooldown_until"`
+	ID               uuid.UUID          `json:"id"`
+}
+
+func (q *Queries) MarkEndpointDeliveryFailure(ctx context.Context, arg MarkEndpointDeliveryFailureParams) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, markEndpointDeliveryFailure, arg.FailureThreshold, arg.CooldownUntil, arg.ID)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Url,
+		&i.Topics,
+		&i.Secret,
+		&i.Active,
+		&i.MaxAttempts,
+		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markEndpointDeliverySuccess = `-- name: MarkEndpointDeliverySuccess :one
+UPDATE endpoints
+SET circuit_state = 'closed',
+    failure_count = 0,
+    last_failure_at = NULL,
+    cooldown_until = NULL,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms,
+          circuit_state, failure_count, last_failure_at, cooldown_until,
+          created_at, updated_at
+`
+
+func (q *Queries) MarkEndpointDeliverySuccess(ctx context.Context, id uuid.UUID) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, markEndpointDeliverySuccess, id)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Url,
+		&i.Topics,
+		&i.Secret,
+		&i.Active,
+		&i.MaxAttempts,
+		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const moveEndpointCircuitToHalfOpen = `-- name: MoveEndpointCircuitToHalfOpen :one
+UPDATE endpoints
+SET circuit_state = 'half_open',
+    updated_at = NOW()
+WHERE id = $1
+  AND circuit_state = 'open'
+  AND cooldown_until <= NOW()
+RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms,
+          circuit_state, failure_count, last_failure_at, cooldown_until,
+          created_at, updated_at
+`
+
+func (q *Queries) MoveEndpointCircuitToHalfOpen(ctx context.Context, id uuid.UUID) (Endpoint, error) {
+	row := q.db.QueryRow(ctx, moveEndpointCircuitToHalfOpen, id)
+	var i Endpoint
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Url,
+		&i.Topics,
+		&i.Secret,
+		&i.Active,
+		&i.MaxAttempts,
+		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateEndpoint = `-- name: UpdateEndpoint :one
 UPDATE endpoints
 SET name = $1,
@@ -168,7 +376,9 @@ SET name = $1,
     timeout_ms = $7,
     updated_at = NOW()
 WHERE id = $8
-RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms, created_at, updated_at
+RETURNING id, name, url, topics, secret, active, max_attempts, timeout_ms,
+          circuit_state, failure_count, last_failure_at, cooldown_until,
+          created_at, updated_at
 `
 
 type UpdateEndpointParams struct {
@@ -203,6 +413,10 @@ func (q *Queries) UpdateEndpoint(ctx context.Context, arg UpdateEndpointParams) 
 		&i.Active,
 		&i.MaxAttempts,
 		&i.TimeoutMs,
+		&i.CircuitState,
+		&i.FailureCount,
+		&i.LastFailureAt,
+		&i.CooldownUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
