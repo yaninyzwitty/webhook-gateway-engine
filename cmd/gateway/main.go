@@ -65,7 +65,7 @@ func run() error {
 	errCh := make(chan error, 2)
 
 	go func() {
-		if err := grpcServer.Run(); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		if err := grpcServer.Run(ctx); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			errCh <- err
 		}
 	}()

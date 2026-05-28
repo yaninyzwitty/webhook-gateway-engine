@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -35,8 +36,9 @@ func New(st *store.Store, port int) *Server {
 	}
 }
 
-func (s *Server) Run() error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+func (s *Server) Run(ctx context.Context) error {
+	listenConfig := net.ListenConfig{}
+	lis, err := listenConfig.Listen(ctx, "tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}

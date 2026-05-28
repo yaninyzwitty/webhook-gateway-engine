@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	eventv1 "github.com/yaninyzwitty/webhook-gateway-service/gen/event/v1"
 	"github.com/yaninyzwitty/webhook-gateway-service/internal/repository"
@@ -39,27 +40,6 @@ func (s *EventService) CreateEvent(ctx context.Context, req *eventv1.CreateEvent
 	if len(req.Payload) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "payload required")
 	}
-	// idempotency check
-	existing, err := s.store.Queries.GetEventByIdempotencyKey(ctx, req.IdempotencyKey)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		slog.Error("failed to check idempotency key", "error", err)
-		return nil, status.Error(codes.Internal, "failed to check idempotency key")
-	}
-
-	if err == nil {
-		// this means that this record is a duplicate, so we return the existing record instead of creating a new one
-		return &eventv1.CreateEventResponse{
-			Event: &eventv1.Event{
-				Id:             existing.ID.String(),
-				IdempotencyKey: existing.IdempotencyKey,
-				Topic:          existing.Topic,
-				Payload:        string(existing.Payload),
-				ReceivedAt:     timestamppb.New(existing.ReceivedAt),
-			},
-			AlreadyExists:     true,
-			DeliveriesCreated: 0,
-		}, nil
-	}
 
 	// transactional ingest + fanout
 
@@ -68,7 +48,7 @@ func (s *EventService) CreateEvent(ctx context.Context, req *eventv1.CreateEvent
 		deliveriesCreated uint32
 	)
 
-	err = s.store.WithTx(ctx, func(q *repository.Queries) error {
+	err := s.store.WithTx(ctx, func(q *repository.Queries) error {
 		// first we persist the event
 		evt, err := q.CreateEvent(ctx, repository.CreateEventParams{
 			IdempotencyKey: req.IdempotencyKey,
@@ -101,6 +81,24 @@ func (s *EventService) CreateEvent(ctx context.Context, req *eventv1.CreateEvent
 		return nil
 	})
 	if err != nil {
+		if isUniqueViolation(err) {
+			existing, getErr := s.store.Queries.GetEventByIdempotencyKey(ctx, req.IdempotencyKey)
+			if getErr != nil {
+				slog.Error("failed to load existing event", "idempotency_key", req.IdempotencyKey, "error", getErr)
+				return nil, status.Error(codes.Internal, "failed to load existing event")
+			}
+			return &eventv1.CreateEventResponse{
+				Event: &eventv1.Event{
+					Id:             existing.ID.String(),
+					IdempotencyKey: existing.IdempotencyKey,
+					Topic:          existing.Topic,
+					Payload:        string(existing.Payload),
+					ReceivedAt:     timestamppb.New(existing.ReceivedAt),
+				},
+				AlreadyExists:     true,
+				DeliveriesCreated: 0,
+			}, status.Error(codes.AlreadyExists, "event already exists")
+		}
 		slog.Error("failed to ingest event", "topic", req.Topic, "error", err)
 		return nil, status.Error(codes.Internal, "failed to ingest event")
 	}
@@ -118,6 +116,11 @@ func (s *EventService) CreateEvent(ctx context.Context, req *eventv1.CreateEvent
 			ReceivedAt:     timestamppb.New(createdEvent.ReceivedAt),
 		}}, nil
 
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func (s *EventService) GetEvent(ctx context.Context, req *eventv1.GetEventRequest) (*eventv1.GetEventResponse, error) {
@@ -160,7 +163,7 @@ func (s *EventService) ListEvents(ctx context.Context, req *eventv1.ListEventsRe
 
 	cursorId, err := uuid.Parse(req.CursorId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to parse cursor id: %v", req.CursorId)
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse cursor id: %v", err)
 	}
 
 	// fetch one extra row

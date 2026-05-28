@@ -1,8 +1,6 @@
 package service
 
 import (
-	"time"
-
 	"github.com/jackc/pgx/v5/pgtype"
 	deliveryv1 "github.com/yaninyzwitty/webhook-gateway-service/gen/delivery/v1"
 	endpointv1 "github.com/yaninyzwitty/webhook-gateway-service/gen/endpoint/v1"
@@ -80,13 +78,6 @@ func textFromStringValue(value *wrapperspb.StringValue) pgtype.Text {
 	return pgtype.Text{String: value.Value, Valid: true}
 }
 
-func textFromString(value string) pgtype.Text {
-	if value == "" {
-		return pgtype.Text{}
-	}
-	return pgtype.Text{String: value, Valid: true}
-}
-
 func textToStringValue(value pgtype.Text) *wrapperspb.StringValue {
 	if !value.Valid {
 		return nil
@@ -113,8 +104,4 @@ func nullableTimestamp(value *timestamppb.Timestamp) pgtype.Timestamptz {
 		return pgtype.Timestamptz{}
 	}
 	return pgtype.Timestamptz{Time: value.AsTime(), Valid: true}
-}
-
-func timestamptzFromTime(value time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: value, Valid: true}
 }

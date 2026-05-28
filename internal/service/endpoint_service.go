@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	endpointv1 "github.com/yaninyzwitty/webhook-gateway-service/gen/endpoint/v1"
 	"github.com/yaninyzwitty/webhook-gateway-service/internal/repository"
@@ -158,6 +159,9 @@ func (s *EndpointService) UpdateEndpoint(ctx context.Context, req *endpointv1.Up
 
 	name := existing.Name
 	if req.Name != nil {
+		if req.Name.Value == "" {
+			return nil, status.Error(codes.InvalidArgument, "name required")
+		}
 		name = req.Name.Value
 	}
 	targetURL := existing.Url
@@ -168,12 +172,19 @@ func (s *EndpointService) UpdateEndpoint(ctx context.Context, req *endpointv1.Up
 		targetURL = req.Url.Value
 	}
 	topics := existing.Topics
-	if len(req.Topics) > 0 {
+	if req.Topics != nil {
+		if len(req.Topics) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "at least one topic required")
+		}
 		topics = req.Topics
 	}
 	secret := existing.Secret
 	if req.Secret != nil {
-		secret = textFromStringValue(req.Secret)
+		updatedSecret := textFromStringValue(req.Secret)
+		if updatedSecret.String == "" {
+			return nil, status.Error(codes.InvalidArgument, "secret required")
+		}
+		secret = updatedSecret
 	}
 	active := existing.Active
 	if req.Active != nil {
@@ -181,10 +192,16 @@ func (s *EndpointService) UpdateEndpoint(ctx context.Context, req *endpointv1.Up
 	}
 	maxAttempts := existing.MaxAttempts
 	if req.MaxAttempts != nil {
+		if req.MaxAttempts.Value <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "max attempts must be positive")
+		}
 		maxAttempts = req.MaxAttempts.Value
 	}
 	timeoutMs := existing.TimeoutMs
 	if req.TimeoutMs != nil {
+		if req.TimeoutMs.Value <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "timeout must be positive")
+		}
 		timeoutMs = req.TimeoutMs.Value
 	}
 
@@ -199,10 +216,28 @@ func (s *EndpointService) UpdateEndpoint(ctx context.Context, req *endpointv1.Up
 		ID:          id,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to update endpoint: %v", err)
+		return nil, endpointUpdateError(err)
 	}
 
 	return &endpointv1.UpdateEndpointResponse{Endpoint: endpointToProto(endpoint)}, nil
+}
+
+func endpointUpdateError(err error) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return status.Error(codes.NotFound, "endpoint not found")
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			return status.Error(codes.AlreadyExists, "endpoint name already exists")
+		case "23514":
+			return status.Error(codes.InvalidArgument, "invalid endpoint update")
+		}
+	}
+
+	return status.Error(codes.Internal, "failed to update endpoint")
 }
 
 func (s *EndpointService) DeleteEndpoint(ctx context.Context, req *endpointv1.DeleteEndpointRequest) (*endpointv1.DeleteEndpointResponse, error) {

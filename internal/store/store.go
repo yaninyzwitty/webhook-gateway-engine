@@ -38,7 +38,9 @@ func (s *Store) WithTx(ctx context.Context, fn func(*repository.Queries) error) 
 		return fmt.Errorf("bool, beginTX error %w: ", err)
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	if err := fn(repository.New(tx)); err != nil {
 		return fmt.Errorf("bool, fn error %w: ", err)
